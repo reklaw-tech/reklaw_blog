@@ -8,12 +8,12 @@ lmk杀进程需要确保两点：
 
 所以lmk要在两点之间找到平衡。
 ## 主要框架与流程
-![](file:///D:/总结/ULMKD/框架图.jpg =800x500)
+![](file:///assets/ULMK/框架图.jpg =800x500)
 lmkd存在于用户空间。  
 lmkd需要从system server了解到最新的proc信息，proc开始或者结束，proc的oomadj是否发生变化。  
 同时lmkd又需要从kernel获取当前内存压力变化，最新版本通过mem psi实现监听。也可以通过memcg的vmpressure实现监听。   
 
-![](file:///D:/总结/ULMKD/整体流程图.jpg)
+![](file:///assets/ULMK/整体流程图.jpg)  
 lmkd的流程包括如下三步：
 
 1. 获取配置信息，确定lmkd的一些算法
@@ -48,7 +48,7 @@ LMKD不仅仅支持从system prop中获取配置，还支持从vendor library中
 通过sched_setscheduler将lmkd进程设置为实时调度，具有更高优先级。
 ## 事件初始化
 lmkd是通过epoll机制监听事件的，事件包括两个类型：1. socket事件 2. 内存压力事件。  
-![](file:///D:/总结/ULMKD/事件处理.jpg =800x400)
+![](file:///assets/ULMK/事件处理.jpg =800x400)
 event_handler_info分装了事件处理函数，设置进epoll event的data字段。event_handler_info根据作用不同，其data段的含义也不一样。  
 sock_event_handler_info封装了socket的处理函数。  
 ### socket事件
@@ -83,11 +83,12 @@ vmpressure的计算其实是kernel做回收的时候。kernel首先计算pressur
 
 计算出内存等级后通过schedule_work挂在系统workqueue（keventd_wq）中执行通知userspace.
 ## 主循环
+![](file:///assets/ULMK/mainloop.png =1000x800)
 ### 与System Server交互
 lmkd中维护了许多进程信息，用于后续选择杀进程，System Server会通过socket更新proc信息。  
 lmkd中对进程的管理对象位proc结构体，通过一个hash表和ADJTOSLOT_COUNT个lru列表来维护所有的proc。  
 hash表方便快速由pid找到对应的proc对象，lru列表则用来快速找到相同oomadj里存活时间最长的proc（**lmkd杀进程时会根据kill_heaviest_task判断，优先杀最大的还是优先杀最老的**）。    
-![](file:///D:/总结/ULMKD/proc存储方式.jpg =800x600)
+![](file:///assets/ULMK/proc存储方式.jpg =800x600)
 System Server通过socket传递给lmkd的cmd类型包括：  
 
 | 命令 | 执行函数 | 作用 |
@@ -236,13 +237,15 @@ for (zone_id = 0; zone_id < MAX_NR_ZONES; zone_id++) {
 }
 ```
 file_cache_to_adj函数就比较简单了，根据nr_file遍历比对lowmem_minfree，确定最后的min_score_adj。   
+##### 总结
+![](file:///assets/ULMK/oomadj确定.jpg =1000x1000)
 #### 杀进程操作
 **低内存手机**  
 简单直接，直接根据警报级别，从level_oomadj确定阈值进行查杀。  
 **非低内存手机**  
 直接调用find_and_kill_process(min_score_adj)杀进程  
 ##### find_and_kill_process
-![](file:///D:/总结/ULMKD/杀进程.jpg =800x900)
+![](file:///assets/ULMK/杀进程.jpg =800x900)
 
 - 根据adj从大到小遍历lmkd中的proc列表，选择proc查杀
 - 相同adj根据配置确定优先杀最重（rss最大）的还是优先杀最老(进lru最早)的proc
